@@ -6,7 +6,10 @@ open class Plugin(
     val id: String,
     val name: String,
     val paid: Boolean,
+    val icon: String,
+    val darkIcon: String,
     val versions: MutableList<PluginVersion>,
+    val descriptions: MutableList<PluginDescription>,
     val vendor: PluginVendor
 )
 
@@ -14,9 +17,6 @@ open class PluginVersion(
     val version: String,
     val since: String,
     val until: String,
-    var icon: String,
-    var darkIcon: String,
-    val descriptions: MutableList<PluginDescription>,
     val downloadUrl: String,
 )
 
@@ -24,12 +24,9 @@ class LocalPluginVersion(
     version: String,
     since: String,
     until: String,
-    icon: String,
-    darkIcon: String,
-    descriptions: MutableList<PluginDescription>,
     downloadUrl: String,
     val file: File
-) : PluginVersion(version, since, until, icon, darkIcon, descriptions, downloadUrl)
+) : PluginVersion(version, since, until, downloadUrl)
 
 data class PluginDescription(
     val language: String,

@@ -113,25 +113,10 @@ private fun mergePlugins(locallyPlugins: List<Plugin>, latestPlugins: List<Plugi
             continue
         }
 
-        // 如果包含新版图标，需要设置为空
-        if (remotePlugin.versions.any { it.icon == localVersion.icon }) {
-            localVersion.icon = StringUtils.EMPTY
-        }
-
-        if (remotePlugin.versions.any { it.darkIcon == localVersion.darkIcon }) {
-            localVersion.darkIcon = StringUtils.EMPTY
-        }
-
-        // 详情信息也不必要多次存储
-        val iterator = localVersion.descriptions.iterator()
-        while (iterator.hasNext()) {
-            val description = iterator.next()
-            val exists = remotePlugin.versions
-                .map { it.descriptions }
-                .flatten().any { it.language == description.language || it.text == description.text }
-            if (exists) {
-                iterator.remove()
-            }
+        // 版本太低
+        if (remotePlugin.versions.any { it.version < localVersion.version }) {
+            log.info("Plugin {}({}) version number is too low", plugin.id, localVersion.version)
+            continue
         }
 
         remotePlugin.versions.addFirst(localVersion)
@@ -166,11 +151,13 @@ private fun pluginsToXml(plugins: List<Plugin>): String {
         val pluginElement = root.addElement("plugin")
         pluginElement.addElement("id").addText(plugin.id)
         pluginElement.addElement("name").addText(plugin.name)
+        pluginElement.addElement("icon").addCDATA(plugin.icon)
+        pluginElement.addElement("dark-icon").addCDATA(plugin.darkIcon)
 
         if (plugin.paid) pluginElement.addElement("paid")
 
         if (plugin.vendor.url.isNotBlank() || plugin.vendor.name.isNotBlank()) {
-            val vendorElement = root.addElement("vendor")
+            val vendorElement = pluginElement.addElement("vendor")
             if (plugin.vendor.name.isNotBlank()) {
                 vendorElement.addText(plugin.vendor.name)
             }
@@ -186,17 +173,16 @@ private fun pluginsToXml(plugins: List<Plugin>): String {
             versionElement.addElement("version").addText(version.version)
             versionElement.addElement("since").addCDATA(version.since)
             versionElement.addElement("until").addCDATA(version.until)
-            versionElement.addElement("icon").addCDATA(version.icon)
-            versionElement.addElement("dark-icon").addCDATA(version.darkIcon)
             versionElement.addElement("download-url").addText(version.downloadUrl)
-            val descriptionsElement = versionElement.addElement("descriptions")
-            for (description in version.descriptions) {
-                val descriptionElement = descriptionsElement.addElement("description")
-                if (description.language.isNotBlank()) {
-                    descriptionElement.addAttribute("language", description.language)
-                }
-                descriptionElement.addCDATA(description.text)
+        }
+
+        val descriptionsElement = pluginElement.addElement("descriptions")
+        for (description in plugin.descriptions) {
+            val descriptionElement = descriptionsElement.addElement("description")
+            if (description.language.isNotBlank()) {
+                descriptionElement.addAttribute("language", description.language)
             }
+            descriptionElement.addCDATA(description.text)
         }
     }
 
@@ -280,15 +266,15 @@ private fun parseJarFile(jar: File, config: MarketplaceConfig): Plugin? {
     return Plugin(
         id = id,
         name = name,
+        icon = iconSvg,
+        darkIcon = darkIconSvg,
         paid = paid,
+        descriptions = descriptions,
         versions = mutableListOf(
             LocalPluginVersion(
                 version = version,
                 since = since,
                 until = until,
-                icon = iconSvg,
-                darkIcon = darkIconSvg,
-                descriptions = descriptions,
                 file = tempFile,
                 // 后面会替换
                 downloadUrl = "https://github.com/${config.repo.fullName}/releases/download/${config.tagName}/${tempFile.name}"
@@ -335,31 +321,29 @@ private fun parsePluginsXml(text: String): List<Plugin> {
         val name = element.element("name")?.textTrim ?: continue
         val paid = element.element("paid") != null
         val vendor = element.element("vendor")
+        val icon = element.element("icon")?.textTrim ?: StringUtils.EMPTY
+        val darkIcon = element.element("darkIcon")?.textTrim ?: StringUtils.EMPTY
         val versions = mutableListOf<PluginVersion>()
+        val descriptions = mutableListOf<PluginDescription>()
+
+        for (desc in element.element("descriptions")?.elements("description") ?: emptyList()) {
+            val description = desc.textTrim ?: StringUtils.EMPTY
+            val language = StringUtils.defaultString(desc.attributeValue("language"))
+            descriptions.add(PluginDescription(language, description))
+        }
+
 
         for (item in element.element("versions")?.elements("version") ?: emptyList()) {
             val version = item.element("version")?.textTrim ?: continue
             val since = item.element("since")?.textTrim ?: continue
             val until = item.element("until")?.textTrim ?: StringUtils.EMPTY
-            val icon = item.element("icon")?.textTrim ?: StringUtils.EMPTY
-            val darkIcon = item.element("darkIcon")?.textTrim ?: StringUtils.EMPTY
             val downloadUrl = item.element("download-url")?.textTrim ?: StringUtils.EMPTY
-            val descriptions = mutableListOf<PluginDescription>()
-
-            for (desc in item.element("descriptions")?.elements("description") ?: emptyList()) {
-                val description = desc.textTrim ?: StringUtils.EMPTY
-                val language = StringUtils.defaultString(item.attributeValue("language"))
-                descriptions.add(PluginDescription(language, description))
-            }
 
             versions.add(
                 PluginVersion(
                     version = version,
                     since = since,
                     until = until,
-                    icon = icon,
-                    darkIcon = darkIcon,
-                    descriptions = descriptions,
                     downloadUrl = downloadUrl
                 )
             )
@@ -370,6 +354,9 @@ private fun parsePluginsXml(text: String): List<Plugin> {
                 id = id,
                 name = name,
                 paid = paid,
+                icon = icon,
+                darkIcon = darkIcon,
+                descriptions = descriptions,
                 versions = versions,
                 vendor = PluginVendor(
                     name = vendor?.textTrim ?: StringUtils.EMPTY,
