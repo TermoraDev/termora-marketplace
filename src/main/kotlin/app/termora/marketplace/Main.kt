@@ -17,7 +17,6 @@ import org.apache.commons.lang3.StringUtils
 import org.apache.commons.lang3.SystemUtils
 import org.apache.commons.lang3.time.DateFormatUtils
 import org.dom4j.DocumentHelper
-import org.dom4j.io.OutputFormat
 import org.dom4j.io.SAXReader
 import org.dom4j.io.XMLWriter
 import org.kohsuke.github.GHRelease
@@ -143,7 +142,7 @@ private fun getLocallyPlugins(config: MarketplaceConfig): List<Plugin> {
 
 private fun pluginsToXml(plugins: List<Plugin>): String {
     val sw = StringWriter()
-    val writer = XMLWriter(sw, OutputFormat.createPrettyPrint())
+    val writer = XMLWriter(sw)
 
     val document = DocumentHelper.createDocument()
     val root = document.addElement("plugins")
