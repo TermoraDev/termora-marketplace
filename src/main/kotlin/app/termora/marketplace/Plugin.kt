@@ -6,10 +6,10 @@ open class Plugin(
     val id: String,
     val name: String,
     val paid: Boolean,
-    val icon: String,
-    val darkIcon: String,
+    var icon: String,
+    var darkIcon: String,
     val versions: MutableList<PluginVersion>,
-    val descriptions: MutableList<PluginDescription>,
+    var descriptions: MutableList<PluginDescription>,
     val vendor: PluginVendor
 )
 

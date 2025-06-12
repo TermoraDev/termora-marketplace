@@ -113,10 +113,14 @@ private fun mergePlugins(locallyPlugins: List<Plugin>, latestPlugins: List<Plugi
         }
 
         // 版本太低
-        if (remotePlugin.versions.any { it.version < localVersion.version }) {
-            log.info("Plugin {}({}) version number is too low", plugin.id, localVersion.version)
+        if (remotePlugin.versions.any { it.version > localVersion.version }) {
+            log.warn("Plugin {}({}) version number is too low", plugin.id, localVersion.version)
             continue
         }
+
+        remotePlugin.icon = plugin.icon
+        remotePlugin.darkIcon = plugin.darkIcon
+        remotePlugin.descriptions = plugin.descriptions
 
         remotePlugin.versions.addFirst(localVersion)
         changed = true
