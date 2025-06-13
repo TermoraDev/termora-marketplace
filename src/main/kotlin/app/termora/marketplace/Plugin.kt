@@ -18,6 +18,7 @@ open class PluginVersion(
     val since: String,
     val until: String,
     val downloadUrl: String,
+    val signature: String,
 )
 
 class LocalPluginVersion(
@@ -25,8 +26,9 @@ class LocalPluginVersion(
     since: String,
     until: String,
     downloadUrl: String,
-    val file: File
-) : PluginVersion(version, since, until, downloadUrl)
+    signature: String,
+    val file: File,
+) : PluginVersion(version, since, until, downloadUrl, signature)
 
 data class PluginDescription(
     val language: String,

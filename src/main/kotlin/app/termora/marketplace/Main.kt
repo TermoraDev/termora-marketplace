@@ -7,6 +7,7 @@ import okhttp3.Response
 import org.apache.commons.cli.DefaultParser
 import org.apache.commons.cli.Option
 import org.apache.commons.cli.Options
+import org.apache.commons.codec.binary.Base64
 import org.apache.commons.compress.archivers.ArchiveStreamFactory
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
@@ -177,6 +178,7 @@ private fun pluginsToXml(plugins: List<Plugin>): String {
             versionElement.addElement("since").addCDATA(version.since)
             versionElement.addElement("until").addCDATA(version.until)
             versionElement.addElement("download-url").addText(version.downloadUrl)
+            versionElement.addElement("signature").addCDATA(version.signature)
         }
 
         val descriptionsElement = pluginElement.addElement("descriptions")
@@ -266,6 +268,13 @@ private fun parseJarFile(jar: File, config: MarketplaceConfig): Plugin? {
 
     log.info("Loaded {} plugin, version: {}", id, version)
 
+    val privateKey = config.privateKey
+    var signature = StringUtils.EMPTY
+    if (privateKey != null) {
+        signature = Base64.encodeBase64URLSafeString(
+            tempFile.inputStream().use { Ed25519.sign(privateKey, it.readAllBytes()) })
+    }
+
     return Plugin(
         id = id,
         name = name,
@@ -279,6 +288,7 @@ private fun parseJarFile(jar: File, config: MarketplaceConfig): Plugin? {
                 since = since,
                 until = until,
                 file = tempFile,
+                signature = signature,
                 // 后面会替换
                 downloadUrl = "https://github.com/${config.repo.fullName}/releases/download/${config.tagName}/${tempFile.name}"
             )
@@ -341,12 +351,14 @@ private fun parsePluginsXml(text: String): List<Plugin> {
             val since = item.element("since")?.textTrim ?: continue
             val until = item.element("until")?.textTrim ?: StringUtils.EMPTY
             val downloadUrl = item.element("download-url")?.textTrim ?: StringUtils.EMPTY
+            val signature = item.element("signature")?.textTrim ?: StringUtils.EMPTY
 
             versions.add(
                 PluginVersion(
                     version = version,
                     since = since,
                     until = until,
+                    signature = signature,
                     downloadUrl = downloadUrl
                 )
             )
@@ -398,12 +410,19 @@ private fun parseArgs(args: Array<String>): MarketplaceConfig {
             .desc("GitHub repository")
             .build()
     )
+    options.addOption(
+        Option.builder("private")
+            .hasArg()
+            .desc("Ed25519 Private Key")
+            .build()
+    )
 
     val cmd = DefaultParser().parse(options, args)
 
     val token = cmd.getOptionValue("token")
     val plugins = cmd.getOptionValue("plugins")
     val repo = cmd.getOptionValue("repo")
+    val privateKeyBase64 = cmd.getOptionValue("private")
     val pluginsDirectory = File(FilenameUtils.normalize(FileUtils.getFile(plugins).absolutePath))
 
     val gh = GitHubBuilder()
@@ -421,11 +440,15 @@ private fun parseArgs(args: Array<String>): MarketplaceConfig {
         }
     }).build()
 
+
     val date = Date()
     val tagName = DateFormatUtils.format(date, "yyyyMMddHHmmss")
     log.info("Plugins directory: ${pluginsDirectory.absolutePath}")
     log.info("Repo is {}", repo)
     log.info("Tag name: {}", tagName)
+
+    val privateKey = if (privateKeyBase64.isNullOrBlank().not())
+        Ed25519.generatePrivate(Base64.decodeBase64(privateKeyBase64)) else null
 
     return MarketplaceConfig(
         pluginsDirectory = pluginsDirectory,
@@ -434,5 +457,6 @@ private fun parseArgs(args: Array<String>): MarketplaceConfig {
         okHttpClient = okHttpClient,
         releaseName = DateFormatUtils.format(date, "yyyy-MM-dd HH:mm:ss"),
         tagName = tagName,
+        privateKey = privateKey,
     )
 }
