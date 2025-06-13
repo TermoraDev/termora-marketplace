@@ -1,6 +1,7 @@
 plugins {
     application
     kotlin("jvm") version "2.1.20"
+    kotlin("plugin.serialization") version "2.1.20"
 }
 
 group = "app.termora"
@@ -25,6 +26,8 @@ dependencies {
     implementation("org.apache.commons:commons-lang3:3.17.0")
     implementation("commons-io:commons-io:2.19.0")
     implementation("org.apache.commons:commons-compress:1.27.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.12.0")
 }
 
 tasks.test {
