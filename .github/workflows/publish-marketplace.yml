@@ -20,8 +20,8 @@ jobs:
       - name: Checkout termora repository
         uses: actions/checkout@v4
         with:
-          repository: hstyi/termora
-          ref: feat/plugin
+          repository: TermoraDev/termora
+          ref: 2.x
           path: termora
 
       - uses: actions/cache@v4
