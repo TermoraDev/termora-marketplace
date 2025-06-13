@@ -1,5 +1,11 @@
 package app.termora.marketplace
 
+import kotlinx.html.*
+import kotlinx.html.dom.create
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -27,9 +33,14 @@ import org.xml.sax.InputSource
 import java.io.File
 import java.io.StringReader
 import java.io.StringWriter
+import java.nio.file.Files
 import java.util.*
 import java.util.jar.JarFile
 import java.util.zip.Deflater
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
 
 private val log = LoggerFactory.getLogger("Main")
 
@@ -57,16 +68,16 @@ fun main(args: Array<String>) {
     // 上传文件
     uploadAssets(plugins, release)
 
-    // 转成 xml
-    val xml = pluginsToXml(plugins)
-
     // plugins.xml
-    release.uploadAsset("plugins.xml", xml.toByteArray().inputStream(), "text/xml")
-
+    release.uploadAsset("plugins.xml", pluginsToXml(plugins).toByteArray().inputStream(), "text/xml")
     log.info("plugins.xml upload successfully")
+
+    release.uploadAsset("plugins.html", pluginsToHtml(plugins).toByteArray().inputStream(), "text/html")
+    log.info("plugins.html upload successfully")
 
     // 正式发布
     release.update().draft(false).update()
+
 
     log.info("Released: ${release.name}")
 }
@@ -178,6 +189,7 @@ private fun pluginsToXml(plugins: List<Plugin>): String {
             versionElement.addElement("since").addCDATA(version.since)
             versionElement.addElement("until").addCDATA(version.until)
             versionElement.addElement("download-url").addText(version.downloadUrl)
+            versionElement.addElement("size").addText("${version.size}")
             versionElement.addElement("signature").addCDATA(version.signature)
         }
 
@@ -193,6 +205,139 @@ private fun pluginsToXml(plugins: List<Plugin>): String {
 
     writer.write(document)
 
+    return sw.toString()
+}
+
+private fun pluginsToJson(plugins: List<Plugin>): String {
+    val plugins = buildJsonArray {
+        for (plugin in plugins) {
+            add(buildJsonObject {
+                put("id", plugin.id)
+                put("name", plugin.name)
+                put("icon", plugin.icon)
+                put("darkIcon", plugin.darkIcon)
+                put("paid", plugin.paid)
+
+                if (plugin.vendor.url.isNotBlank() || plugin.vendor.name.isNotBlank()) {
+                    put("vendor", buildJsonObject {
+                        if (plugin.vendor.name.isNotBlank()) {
+                            put("name", plugin.vendor.name)
+                        }
+                        if (plugin.vendor.url.isNotBlank()) {
+                            put("url", plugin.vendor.url)
+                        }
+                    })
+                }
+
+                put("versions", buildJsonArray {
+                    for (version in plugin.versions) {
+                        add(buildJsonObject {
+                            put("version", version.version)
+                            put("since", version.since)
+                            put("until", version.until)
+                            put("downloadUrl", version.downloadUrl)
+                            put("signature", version.signature)
+                        })
+                    }
+                })
+                put("descriptions", buildJsonArray {
+                    for (description in plugin.descriptions) {
+                        add(buildJsonObject {
+                            if (description.language.isNotBlank()) {
+                                put("language", description.language)
+                            }
+                            put("text", description.text)
+                        })
+                    }
+                })
+            })
+        }
+    }
+
+    return Json.encodeToString(plugins)
+}
+
+private fun pluginsToHtml(plugins: List<Plugin>): String {
+    val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
+    document.appendChild(document.create.html {
+        head {
+            meta(
+                "viewport",
+                "width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+            )
+            title("Termora's plugin marketplace")
+        }
+
+        body {
+            h1 {
+                a {
+                    target = "_blank"
+                    href = "https://github.com/TermoraDev/Termora"
+                    text("Termora")
+                }
+                text("'s plugin marketplace")
+            }
+            hr()
+
+            for (plugin in plugins) {
+                h2 { text(plugin.name) }
+
+                details {
+                    open = false
+                    for (description in plugin.descriptions) {
+                        if (description == plugin.descriptions.first()) {
+                            summary {
+                                style = "color: dimgray;cursor: pointer;"
+                                text(description.text)
+                            }
+                        } else {
+                            p {
+                                span {
+                                    text(description.language)
+                                    text(":")
+                                    style = "color: gray"
+                                }
+                                span {
+                                    style = "margin-left: 8px;color: dimgray"
+                                    text(description.text)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                ul {
+                    for (version in plugin.versions) {
+                        li {
+                            a {
+                                target = "_blank"
+                                href = version.downloadUrl
+                                text(version.version)
+
+                                if (version != plugin.versions.first()) {
+                                    style = "color: black"
+                                }
+                            }
+
+                            code {
+                                style = "margin-left: 10px; color: gray"
+                                span { text(version.since) }
+                                span { text(version.until) }
+                            }
+                        }
+                    }
+                }
+
+                // margin
+                div { style = "margin-bottom: 40px; " }
+
+            }
+        }
+    })
+
+    val trans = TransformerFactory.newInstance().newTransformer()
+    val sw = StringWriter()
+    trans.transform(DOMSource(document), StreamResult(sw))
     return sw.toString()
 }
 
@@ -289,8 +434,8 @@ private fun parseJarFile(jar: File, config: MarketplaceConfig): Plugin? {
                 until = until,
                 file = tempFile,
                 signature = signature,
-                // 后面会替换
-                downloadUrl = "https://github.com/${config.repo.fullName}/releases/download/${config.tagName}/${tempFile.name}"
+                downloadUrl = "https://github.com/${config.repo.fullName}/releases/download/${config.tagName}/${tempFile.name}",
+                size = Files.size(tempFile.toPath()),
             )
         ),
         vendor = PluginVendor(
@@ -352,6 +497,7 @@ private fun parsePluginsXml(text: String): List<Plugin> {
             val until = item.element("until")?.textTrim ?: StringUtils.EMPTY
             val downloadUrl = item.element("download-url")?.textTrim ?: StringUtils.EMPTY
             val signature = item.element("signature")?.textTrim ?: StringUtils.EMPTY
+            val size = item.element("size")?.textTrim?.toLongOrNull() ?: 0
 
             versions.add(
                 PluginVersion(
@@ -359,7 +505,8 @@ private fun parsePluginsXml(text: String): List<Plugin> {
                     since = since,
                     until = until,
                     signature = signature,
-                    downloadUrl = downloadUrl
+                    downloadUrl = downloadUrl,
+                    size = size,
                 )
             )
         }
