@@ -1,0 +1,47 @@
+name: Publish Marketplace
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Installing Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Checkout termora repository
+        uses: actions/checkout@v4
+        with:
+          repository: hstyi/termora
+          ref: feat/plugin
+          path: termora
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-${{ runner.arch }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-gradle-
+
+      - name: Build plugins
+        run: |
+          cd termora
+          ./gradlew build -x test --no-daemon
+
+      - name: Publish
+        env:
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          ./gradlew :run --args="-token $GH_TOKEN -repo $REPO -private $PRIVATE_KEY -plugins termora/build/plugins" --no-daemon
